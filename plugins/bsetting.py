@@ -1,6 +1,5 @@
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from bot import bot
 from config import (
     OWNER_ID,
     DEFAULT_SPLIT_SIZE,
