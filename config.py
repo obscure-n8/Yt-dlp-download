@@ -1,6 +1,8 @@
 import os
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+print(f"DEBUG: BOT_TOKEN loaded? {'Yes' if BOT_TOKEN else 'No'}")
+print(f"DEBUG: API_ID = {API_ID}")
 API_ID    = int(os.environ.get("API_ID", 0))
 API_HASH  = os.environ.get("API_HASH")
 
