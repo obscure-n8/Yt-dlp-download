@@ -4,7 +4,7 @@ from pyrogram import Client, idle
 from config import BOT_TOKEN, API_ID, API_HASH, DOWNLOAD_DIR
 from uploader import start_clients, stop_clients
 
-# Global bot instance (ekhane plugins=dict() thakbe na)
+# bot instance (ekhane plugins=dict() kichu thakbe na)
 bot = Client(
     "bot",
     api_id=API_ID,
@@ -16,7 +16,7 @@ async def main():
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     await start_clients()
     
-    # প্লাগইনগুলোকে জোর করে লোড করা হচ্ছে
+    # প্লাগইনগুলো ম্যানুয়ালি লোড করা হচ্ছে
     from plugins import start, leech, bsetting
     start.register_handlers(bot)
     leech.register_handlers(bot)
