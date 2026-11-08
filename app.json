@@ -1,0 +1,25 @@
+{
+  "name": "yt-m3u8-leech-bot",
+  "description": "m3u8 leech bot using yt-dlp, split & upload to Telegram.",
+  "repository": "https://github.com/YOUR_USERNAME/yt-m3u8-leech-bot",
+  "keywords": ["telegram", "yt-dlp", "m3u8", "leech"],
+  "buildpacks": [
+    { "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest" },
+    { "url": "heroku/python" }
+  ],
+  "env": {
+    "BOT_TOKEN": { "description": "Bot token from @BotFather", "required": true },
+    "API_ID": { "description": "my.telegram.org theke API_ID", "required": true },
+    "API_HASH": { "description": "my.telegram.org theke API_HASH", "required": true },
+    "OWNER_ID": { "description": "Tomar Telegram user id (/bsetting er jonno)", "required": true },
+    "USER_SESSION_STRING": { "description": "Optional non-premium session (2GB)", "required": false },
+    "PREMIUM_SESSION_STRING": { "description": "Optional premium session (4GB)", "required": false },
+    "TG_SPLIT_SIZE": { "description": "Non-premium split size (bytes)", "value": "2147483648", "required": false },
+    "PREMIUM_SPLIT_SIZE": { "description": "Premium split size (bytes)", "value": "4294967296", "required": false },
+    "FRAGMENT_WORKERS": { "description": "yt-dlp -N (download speed)", "value": "16", "required": false },
+    "UPLOAD_CHAT_ID": { "description": "Upload target chat id", "value": "me", "required": false }
+  },
+  "formation": {
+    "worker": { "quantity": 1, "size": "standard-2x" }
+  }
+}
