@@ -1,36 +1,142 @@
-name: Deploy to Heroku (Container)
+name: Deploy to Heroku
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      app_name:
+        description: Heroku app name
+        required: true
+        type: string
+      app_region:
+        description: Heroku app region
+        required: true
+        type: choice
+        options:
+          - us
+          - eu
+        default: us
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heroku-deploy-${{ inputs.app_name }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  deploy:
+    name: Build and deploy worker container
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Login to Heroku Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: registry.heroku.com
-          username: _
-          password: ${{ secrets.HEROKU_API_KEY }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          push: true
-          tags: registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/worker:latest
-          platforms: linux/amd64
-
-      - name: Install Heroku CLI
-        run: curl https://cli-assets.heroku.com/install.sh | sh
-
-      - name: Release container on Heroku
-        run: heroku container:release worker -a ${{ secrets.HEROKU_APP_NAME }}
+      - name: Validate deployment secrets
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          OWNER_ID: ${{ secrets.OWNER_ID }}
+        run: |
+          set -euo pipefail
+          : "${HEROKU_API_KEY:?Add HEROKU_API_KEY to GitHub Actions secrets}"
+          : "${BOT_TOKEN:?Add BOT_TOKEN to GitHub Actions secrets}"
+          : "${API_ID:?Add API_ID to GitHub Actions secrets}"
+          : "${API_HASH:?Add API_HASH to GitHub Actions secrets}"
+          : "${OWNER_ID:?Add OWNER_ID to GitHub Actions secrets}"
+          [[ "$API_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "API_ID must be a positive integer." >&2
+            exit 1
+          }
+          [[ "$OWNER_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo "OWNER_ID must be a positive integer." >&2
+            exit 1
+          }
+
+      - name: Install Heroku CLI
+        run: |
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku --version
+
+      - name: Authenticate with Heroku
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku auth:whoami
+
+      - name: Create app if needed and select container stack
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ inputs.app_name }}
+          APP_REGION: ${{ inputs.app_region }}
+        run: |
+          set -euo pipefail
+          if heroku apps:info --app "$APP_NAME" >/dev/null 2>&1; then
+            echo "Using existing Heroku app: $APP_NAME"
+          else
+            heroku create "$APP_NAME" --region "$APP_REGION" --stack container
+          fi
+          heroku stack:set container --app "$APP_NAME"
+
+      - name: Set Heroku config vars
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ inputs.app_name }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          OWNER_ID: ${{ secrets.OWNER_ID }}
+          USER_SESSION_STRING: ${{ secrets.USER_SESSION_STRING }}
+          PREMIUM_SESSION_STRING: ${{ secrets.PREMIUM_SESSION_STRING }}
+        run: |
+          set -euo pipefail
+          config_vars=(
+            "BOT_TOKEN=$BOT_TOKEN"
+            "API_ID=$API_ID"
+            "API_HASH=$API_HASH"
+            "OWNER_ID=$OWNER_ID"
+            "TG_SPLIT_SIZE=2147483648"
+            "PREMIUM_SPLIT_SIZE=4294967296"
+            "FRAGMENT_WORKERS=16"
+            "UPLOAD_CHAT_ID=me"
+          )
+          if [[ -n "${USER_SESSION_STRING:-}" ]]; then
+            config_vars+=("USER_SESSION_STRING=$USER_SESSION_STRING")
+          fi
+          if [[ -n "${PREMIUM_SESSION_STRING:-}" ]]; then
+            config_vars+=("PREMIUM_SESSION_STRING=$PREMIUM_SESSION_STRING")
+          fi
+          heroku config:set "${config_vars[@]}" --app "$APP_NAME"
+
+      - name: Log in to Heroku Container Registry
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: heroku container:login
+
+      - name: Build and push worker container
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ inputs.app_name }}
+        run: heroku container:push worker --app "$APP_NAME"
+
+      - name: Release worker container
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ inputs.app_name }}
+        run: heroku container:release worker --app "$APP_NAME"
+
+      - name: Ensure one worker dyno is running (standard-2x)
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ inputs.app_name }}
+        run: heroku ps:scale worker=1:standard-2x --app "$APP_NAME"
+
+      - name: Show deployment status
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          APP_NAME: ${{ inputs.app_name }}
+        run: |
+          set -euo pipefail
+          heroku ps --app "$APP_NAME"
+          heroku config --app "$APP_NAME" --json | jq -r 'keys[]'
